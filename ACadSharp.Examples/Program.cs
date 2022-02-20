@@ -27,10 +27,16 @@ namespace ACadSharp.Examples
 			reader.Read();
 		}
 
+		static string safeJsonString(string s)
+		{
+			if (string.IsNullOrEmpty(s)) return "";
+			return s.Replace("\"", "\\\"");
+		}
+
 		static void ReadDwg()
 		{
 			//string file = "../samples/dwg/PYLOT_2013.dwg";
-			string file = "../samples/dwg/5177.dwg";
+			string file = "../samples/dwg/G30288_2013.dwg";
 
 			StringBuilder sb = new StringBuilder();
 
@@ -49,7 +55,17 @@ namespace ACadSharp.Examples
 						List<string> names = new List<string>();
 						foreach(Entity ent in br.Entities)
 						{
-							if (ent.ObjectName == "ATTDEF") names.Add(((AttributeDefinition)ent).Prompt);
+							if (ent.ObjectName == "ATTDEF") 
+							{
+								if (!string.IsNullOrEmpty(((AttributeDefinition)ent).Tag))
+								{
+									names.Add(((AttributeDefinition)ent).Tag);
+								} 
+								else if (!string.IsNullOrEmpty(((AttributeDefinition)ent).Prompt))
+								{
+									names.Add(((AttributeDefinition)ent).Prompt);
+								}
+							}
 						}
 						blocksFields.Add(br.Name, names.ToArray());
 					}
@@ -63,11 +79,13 @@ namespace ACadSharp.Examples
 					if (br.Name == "*Model_Space" && br.ObjectName == "BLOCK_RECORD") 
 					{
 						Console.WriteLine($"extracted {br.ObjectName}:{br.Name}");
-						foreach (CadObject insert in br.Entities)
+						foreach (CadObject ent in br.Entities)
 						{
-							Console.WriteLine($"	extracted {insert.ObjectName}:{br.Name}");
-
-							Insert ins = ((Insert)insert);
+							if (ent.ObjectName != "INSERT")
+							{
+								continue;
+							}
+							Insert ins = ((Insert)ent);
 							BlockRecord br2 = ins.Block.Owner as BlockRecord;
 
 							if (!isFirst) sb.AppendLine(", ");
@@ -87,12 +105,23 @@ namespace ACadSharp.Examples
 							for (int i=0; i<atts.Length; i++)
 							{
 								AttributeEntity att = atts[i];
-								if (!isFirstAtt) sb.AppendLine(", ");
+								
 
-								sb.Append($" \"{blocksFields[br2.Name][i]}\": \"{att.Value}\" ");
+								string propName = safeJsonString(blocksFields[br2.Name][i]);
+								if (!string.IsNullOrEmpty(propName)) 
+								{
+									if (!isFirstAtt) sb.AppendLine(", ");
 
-								isFirstAtt = false;
+									string propVal = safeJsonString(att.Value);
+
+									sb.Append($" \"{propName}\": \"{propVal}\" ");
+
+									isFirstAtt = false;
+								}
 							}
+
+							if (!isFirstAtt) sb.AppendLine(", ");
+							sb.Append($" \"Layer\": \"{ins.Layer.Name}\" ");
 
 							sb.Append("} ");
 
@@ -104,7 +133,8 @@ namespace ACadSharp.Examples
 
 				sb.AppendLine("]}");
 
-				Console.Write(sb.ToString());
+				string jsonName = Path.Combine(Path.GetDirectoryName(file), Path.GetFileNameWithoutExtension(file) + ".geojson");
+				File.WriteAllText(jsonName, sb.ToString());
 			}
 
 			// string[] files = Directory.GetFiles(PathSamples + "/dwg/", "*.dwg");
