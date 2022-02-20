@@ -4,6 +4,7 @@ using ACadSharp.IO.DWG;
 using ACadSharp.IO.DXF;
 using ACadSharp.Tables;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -28,13 +29,31 @@ namespace ACadSharp.Examples
 
 		static void ReadDwg()
 		{
+			//string file = "../samples/dwg/PYLOT_2013.dwg";
 			string file = "../samples/dwg/5177.dwg";
 
 			StringBuilder sb = new StringBuilder();
 
+			
+
 			using (DwgReader reader = new DwgReader(file, onNotification))
 			{
 				CadDocument doc = reader.Read();
+
+				Dictionary<string, string[]> blocksFields = new Dictionary<string, string[]>(); 
+				// build block fields dictionary
+				foreach (BlockRecord br in doc.BlockRecords) 
+				{
+					if (br.Name != "*Model_Space" && br.Name != "*Paper_Space" && br.ObjectName == "BLOCK_RECORD") 
+					{
+						List<string> names = new List<string>();
+						foreach(Entity ent in br.Entities)
+						{
+							if (ent.ObjectName == "ATTDEF") names.Add(((AttributeDefinition)ent).Prompt);
+						}
+						blocksFields.Add(br.Name, names.ToArray());
+					}
+				}
 
 				sb.AppendLine("{\"type\": \"FeatureCollection\", \"features\": [");
 
@@ -49,26 +68,33 @@ namespace ACadSharp.Examples
 							Console.WriteLine($"	extracted {insert.ObjectName}:{br.Name}");
 
 							Insert ins = ((Insert)insert);
-							
+							BlockRecord br2 = ins.Block.Owner as BlockRecord;
+
 							if (!isFirst) sb.AppendLine(", ");
 
 							sb.Append("{");
-								sb.Append($" \"type\": \"Feature\", \"id\": \"{ins.Handle}\", ");
+							sb.Append($" \"type\": \"Feature\", \"id\": \"{ins.Handle}\", ");
 
-								sb.Append(" \"geometry\": { ");
-									sb.Append($" \"type\": \"Point\", \"coordinates\": [ {ins.InsertPoint.X}, {ins.InsertPoint.Y} ] ");
-								sb.Append("}, ");
+							sb.Append(" \"geometry\": { ");
+							sb.Append($" \"type\": \"Point\", \"coordinates\": [ {ins.InsertPoint.X}, {ins.InsertPoint.Y} ] ");
+							sb.Append("}, ");
 
-								sb.Append(" \"properties\": { ");
+							sb.Append(" \"properties\": { ");
 
-								bool isFirstAtt = true;
-								foreach (AttributeEntity ae in ins.Attributes)
-								{
-									if (!isFirstAtt) sb.AppendLine(", ");
-									sb.Append($"\"{ae.Tag}\": \"{ae.Value}\"");
-									isFirstAtt = false;
-								}
-								sb.Append("} ");
+							bool isFirstAtt = true;
+
+							AttributeEntity[] atts = ins.Attributes.ToArray();
+							for (int i=0; i<atts.Length; i++)
+							{
+								AttributeEntity att = atts[i];
+								if (!isFirstAtt) sb.AppendLine(", ");
+
+								sb.Append($" \"{blocksFields[br2.Name][i]}\": \"{att.Value}\" ");
+
+								isFirstAtt = false;
+							}
+
+							sb.Append("} ");
 
 							sb.Append("}");
 							isFirst = false;
