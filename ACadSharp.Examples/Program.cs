@@ -28,7 +28,7 @@ namespace ACadSharp.Examples
 
 		static void ReadDwg()
 		{
-            string file = Path.Combine(PathSamples, "dwg/G30288_2018.dwg");
+            string file = Path.Combine(PathSamples, "local/G30288_2018.dwg");
 
             StringBuilder sb = new StringBuilder();
 

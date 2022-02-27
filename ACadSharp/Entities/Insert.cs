@@ -1,19 +1,18 @@
 ﻿using ACadSharp.Attributes;
-using ACadSharp.Blocks;
-using ACadSharp.IO.Templates;
+using ACadSharp.Tables;
 using CSMath;
 using System.Collections.Generic;
 
 namespace ACadSharp.Entities
 {
-	/// <summary>
-	/// Represents a <see cref="Hatch"/> entity.
-	/// </summary>
-	/// <remarks>
-	/// Object name <see cref="DxfFileToken.EntityHatch"/> <br/>
-	/// Dxf class name <see cref="DxfSubclassMarker.Hatch"/>
-	/// </remarks>
-	[DxfName(DxfFileToken.EntityHatch)]
+    /// <summary>
+    /// Represents a <see cref="Hatch"/> entity.
+    /// </summary>
+    /// <remarks>
+    /// Object name <see cref="DxfFileToken.EntityHatch"/> <br/>
+    /// Dxf class name <see cref="DxfSubclassMarker.Hatch"/>
+    /// </remarks>
+    [DxfName(DxfFileToken.EntityHatch)]
 	[DxfSubClass(DxfSubclassMarker.Hatch)]
 	public class Insert : Entity
 	{
@@ -38,7 +37,7 @@ namespace ACadSharp.Entities
 		/// <summary>
 		///  Gets the insert block definition
 		/// </summary>
-		public Block Block { get; set; }
+		public BlockRecord Block { get; set; }
 
 		/// <summary>
 		/// A 3D WCS coordinate representing the insertion or origin point.
