@@ -10,6 +10,7 @@ using CSMath;
 using CSUtilities.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 
 namespace ACadSharp.IO.DWG
 {
@@ -74,7 +75,7 @@ namespace ACadSharp.IO.DWG
 		/// </summary>
 		private readonly IDwgStreamReader _crcReader;
 
-		private readonly CRC8StreamHandler _crcStream;
+		private readonly Stream _crcStream;
 
 		public DwgObjectSectionReader(
 			ACadVersion version,
@@ -93,8 +94,12 @@ namespace ACadSharp.IO.DWG
 			this._classes = classes.ToDictionary(x => x.ClassNumber, x => x);
 
 			//Initialize the crc stream
-			//RS : CRC for the data section, starting after the sentinel. Use 0xC0C1 for the initial value.
-			this._crcStream = new CRC8StreamHandler(this._reader.Stream, 0xC0C1);
+			//RS : CRC for the data section, starting after the sentinel. Use 0xC0C1 for the initial value
+			if (this._builder.Flags.HasFlag(DwgReaderFlags.CheckCrc))
+				this._crcStream = new CRC8StreamHandler(this._reader.Stream, 0xC0C1);
+			else
+				this._crcStream = this._reader.Stream;
+
 			//Setup the entity handler
 			this._crcReader = DwgStreamReader.GetStreamHandler(this._version, this._crcStream);
 		}
@@ -350,11 +355,11 @@ namespace ACadSharp.IO.DWG
 				if (this._objectReader.Read2Bits() == 3)
 				{
 					//MATERIAL present if material flags were 11
-					long num2 = (long)this.handleReference();
+					this.handleReference();
 				}
 
 				//Shadow flags RC
-				int num3 = this._objectReader.ReadByte();
+				this._objectReader.ReadByte();
 			}
 
 			//R2000 +:
@@ -850,6 +855,7 @@ namespace ACadSharp.IO.DWG
 				case ObjectType.LONG_TRANSACTION:
 					break;
 				case ObjectType.LWPOLYLINE:
+					template = this.readLWPolyline();
 					break;
 				case ObjectType.HATCH:
 					template = this.readHatch();
@@ -877,7 +883,7 @@ namespace ACadSharp.IO.DWG
 				case ObjectType.ACAD_PROXY_OBJECT:
 					break;
 				default:
-					return this.readUnlistedType((short)type);
+					return this.readUnlistedType((short)type, notifications);
 			}
 
 			if (template == null)
@@ -907,8 +913,9 @@ namespace ACadSharp.IO.DWG
 				case "DICTIONARYVAR":
 				case "DICTIONARYWDFLT":
 				case "FIELD":
+					break;
 				case "GROUP":
-					//System.Diagnostics.Debug.Fail($"Not implemented dxf class: {c.DxfName}");
+					template = this.readGroup();
 					break;
 				case "HATCH":
 					template = this.readHatch();
@@ -918,7 +925,10 @@ namespace ACadSharp.IO.DWG
 				case "IMAGEDEF":
 				case "IMAGEDEFREACTOR":
 				case "LAYER_INDEX":
+					break;
 				case "LAYOUT":
+					template = readLayout();
+					break;
 				case "LWPLINE":
 				case "MATERIAL":
 				case "MLEADER":
@@ -939,16 +949,16 @@ namespace ACadSharp.IO.DWG
 				case "WIPEOUT":
 				case "WIPEOUTVARIABLE":
 				case "WIPEOUTVARIABLES":
+					break;
 				case "XRECORD":
-					//System.Diagnostics.Debug.Fail($"Not implemented dxf class: {c.DxfName}");
+					template = readXRecord();
 					break;
 				default:
-					//System.Diagnostics.Debug.Fail($"Not implemented dxf class: {c.DxfName}");
 					break;
 			}
 
 			if (template == null)
-				notifications?.Invoke(null, new NotificationEventArgs($"Unlisted object not implemented, DXF name: {c.DxfName}"));
+				notifications?.Invoke(c, new NotificationEventArgs($"Unlisted object not implemented, DXF name: {c.DxfName}"));
 
 			return template;
 		}
@@ -959,6 +969,7 @@ namespace ACadSharp.IO.DWG
 		{
 			TextEntity text = new TextEntity();
 			DwgTextEntityTemplate template = new DwgTextEntityTemplate(text);
+
 			this.readCommonTextData(template);
 
 			return template;
@@ -968,6 +979,7 @@ namespace ACadSharp.IO.DWG
 		{
 			AttributeEntity att = new AttributeEntity();
 			DwgTextEntityTemplate template = new DwgTextEntityTemplate(att);
+
 			this.readCommonTextData(template);
 
 			this.readCommonAttData(att);
@@ -1356,7 +1368,8 @@ namespace ACadSharp.IO.DWG
 			//Point 3BD 10 NOTE THAT THE Z SEEMS TO ALWAYS BE 0.0! The Z must be taken from the 2D POLYLINE elevation.
 			vertex.Location = this._objectReader.Read3BitDouble();
 
-			//Start width BD 40 If it's negative, use the abs val for start AND end widths (and note that no end width will be present). This is a compression trick for cases where the start and end widths are identical and non-0.
+			//Start width BD 40 If it's negative, use the abs val for start AND end widths (and note that no end width will be present).
+			//This is a compression trick for cases where the start and end widths are identical and non-0.
 			double width = this._objectReader.ReadBitDouble();
 			if (width < 0.0)
 			{
@@ -1422,7 +1435,7 @@ namespace ACadSharp.IO.DWG
 
 		private DwgTemplate readPolyline2D()
 		{
-			PolyLine pline = new PolyLine();
+			PolyLine2D pline = new PolyLine2D();
 			DwgPolyLineTemplate template = new DwgPolyLineTemplate(pline);
 
 			this.readCommonEntityData(template);
@@ -1470,7 +1483,7 @@ namespace ACadSharp.IO.DWG
 
 		private DwgTemplate readPolyline3D()
 		{
-			PolyLine pline = new PolyLine();
+			PolyLine3D pline = new PolyLine3D();
 			DwgPolyLineTemplate template = new DwgPolyLineTemplate(pline);
 
 			this.readCommonEntityData(template);
@@ -1955,7 +1968,7 @@ namespace ACadSharp.IO.DWG
 
 		private DwgTemplate readSolid()
 		{
-			Solid3D solid = new Solid3D();
+			Solid solid = new Solid();
 			DwgEntityTemplate template = new DwgEntityTemplate(solid);
 
 			//Common Entity Data
@@ -3041,7 +3054,7 @@ namespace ACadSharp.IO.DWG
 		private DwgTemplate readLType()
 		{
 			LineType ltype = new LineType();
-			DwgTableEntryTemplate<LineType> template = new DwgTableEntryTemplate<LineType>(ltype);
+			DwgLineTypeTemplate template = new DwgLineTypeTemplate(ltype);
 
 			this.readCommonNonEntityData(template);
 
@@ -3825,30 +3838,28 @@ namespace ACadSharp.IO.DWG
 
 		private DwgTemplate readViewportEntityHeader()
 		{
-			/*
-			  ViewportEntityHeader viewportEntityHeader = new ViewportEntityHeader();
-			  DwgTableEntryTemplate<ViewportEntityHeader> template = new DwgTableEntryTemplate<ViewportEntityHeader>(viewportEntityHeader);
+			//Viewport viewport = new Viewport();
+			//DwgViewportTemplate template = new DwgViewportTemplate(viewport);
 
-			  this.readCommonNonEntityData(template);
+			//this.readCommonNonEntityData(template);
 
-			  //Common:
-			  //Entry name TV 2
-			  viewportEntityHeader.Name = this._textReader.ReadVariableText();
+			////Common:
+			////Entry name TV 2
+			//viewport.StyleSheetName = this._textReader.ReadVariableText();
 
-			  this.readXrefDependantBit(viewportEntityHeader);
+			//this.readXrefDependantBit(viewport);
 
-			  //1 flag B The 1 bit of the 70 group
-			  this._objectReader.ReadBit();
+			////1 flag B The 1 bit of the 70 group
+			//this._objectReader.ReadBit();
 
-			  //Handle refs H viewport entity control (soft pointer)
-			  this.handleReference();
-			  //xdicobjhandle (hard owner)
-			  this.handleReference();
-			  //External reference block handle (hard pointer)
-			  this.handleReference();
+			////Handle refs H viewport entity control (soft pointer)
+			//this.handleReference();
+			////xdicobjhandle (hard owner)
+			//this.handleReference();
+			////External reference block handle (hard pointer)
+			//this.handleReference();
 
-			  //TODO: ViewportEntityHeader is it necessary?
-			  */
+			//TODO: ViewportEntityHeader is it necessary?
 
 			return null;
 		}
@@ -3953,6 +3964,11 @@ namespace ACadSharp.IO.DWG
 			}
 
 			return template;
+		}
+
+		private DwgTemplate readLWPolyline()
+		{
+			return null;
 		}
 
 		private DwgTemplate readHatch()
@@ -4323,7 +4339,7 @@ namespace ACadSharp.IO.DWG
 
 			this.readCommonNonEntityData(template);
 
-			layout.PlotSettings = this.readPlotSettings();
+			this.readPlotSettings(layout);
 
 			//Common:
 			//Layout name TV 1 layout name
@@ -4380,13 +4396,11 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private PlotSettings readPlotSettings()
+		private void readPlotSettings(PlotSettings plot)
 		{
-			PlotSettings plot = new PlotSettings();
-
 			//Common:
 			//Page setup name TV 1 plotsettings page setup name
-			plot.Name = this._textReader.ReadVariableText();
+			plot.PageName = this._textReader.ReadVariableText();
 			//Printer / Config TV 2 plotsettings printer or configuration file
 			plot.SystemPrinterName = this._textReader.ReadVariableText();
 			//Plot layout flags BS 70 plotsettings plot layout flag
@@ -4464,8 +4478,6 @@ namespace ACadSharp.IO.DWG
 			if (this.R2007Plus)
 				//Visual Style handle(soft pointer)
 				this.handleReference();
-
-			return plot;
 		}
 
 		#endregion Object readers
