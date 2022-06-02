@@ -26,9 +26,7 @@ namespace ACadSharp.Tables
 		/// <summary>
 		/// Default text style.
 		/// </summary>
-		public static TextStyle Default { get { return new TextStyle("STANDARD"); } }
-
-		//100	Subclass marker(AcDbTextStyleTableRecord)
+		public static TextStyle Default { get { return new TextStyle("Standard"); } }
 
 		/// <summary>
 		/// Style state flags.
@@ -72,7 +70,7 @@ namespace ACadSharp.Tables
 		/// Primary font file name.
 		/// </summary>
 		[DxfCodeValue(3)]
-		public string Filename { get; set; }
+		public string Filename { get; set; } = "arial.ttf";
 
 		/// <summary>
 		/// Bigfont file name; blank if none.
@@ -83,7 +81,7 @@ namespace ACadSharp.Tables
 		/// <summary>
 		/// A long value which contains a truetype font’s pitch and family, character set, and italic and bold flags
 		/// </summary>
-		[DxfCodeValue(1071)]
+		[DxfCodeValue(DxfReferenceType.Optional, 1071)]
 		public FontFlags TrueType { get; set; }
 
 		internal TextStyle() : base() { }

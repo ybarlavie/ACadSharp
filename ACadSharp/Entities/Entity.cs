@@ -1,12 +1,6 @@
 ﻿using ACadSharp.Attributes;
-using ACadSharp.IO.Templates;
+using ACadSharp.Objects;
 using ACadSharp.Tables;
-using CSMath;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
 
 namespace ACadSharp.Entities
 {
@@ -20,7 +14,7 @@ namespace ACadSharp.Entities
 		/// <summary>
 		/// Specifies the layer for an object.
 		/// </summary>
-		[DxfCodeValue(8)]
+		[DxfCodeValue(DxfReferenceType.Name, 8)]
 		public Layer Layer { get; set; } = Layer.Default;
 
 		/// <summary>
@@ -31,7 +25,7 @@ namespace ACadSharp.Entities
 		/// This object can hold an RGB value, an ACI number (an integer from 1 to 255), or a named color.
 		/// Using an RGB value, you can choose from millions of colors.
 		/// </remarks>
-		[DxfCodeValue(62)]
+		[DxfCodeValue(62, 420, 430)]
 		public Color Color { get; set; } = Color.ByLayer;
 
 		/// <summary>
@@ -67,35 +61,21 @@ namespace ACadSharp.Entities
 		public Transparency Transparency { get; set; }
 
 		/// <summary>
-		/// Linetype name (present if not BYLAYER). The special name BYBLOCK indicates a floating linetype (optional)
+		/// Linetype name (present if not BYLAYER). 
+		/// The special name BYBLOCK indicates a floating linetype (optional)
 		/// </summary>
-		[DxfCodeValue(6)]
+		[DxfCodeValue(DxfReferenceType.Name, 6)]
 		public LineType LineType { get; set; }
+
+		/// <summary>
+		/// Material object (present if not BYLAYER)
+		/// </summary>
+		[DxfCodeValue(DxfReferenceType.Handle, 347)]
+		public Material Material { get; set; }
 
 		/// <summary>
 		/// Default constructor
 		/// </summary>
 		public Entity() : base() { }
-
-		/// <summary>
-		/// Get the map of subentities (collection) inside this entity.
-		/// </summary>
-		/// <returns></returns>
-		[Obsolete]
-		internal Dictionary<string, PropertyInfo> GetSubEntitiesMap()
-		{
-			Dictionary<string, PropertyInfo> map = new Dictionary<string, PropertyInfo>();
-
-			foreach (PropertyInfo p in this.GetType().GetProperties())
-			{
-				DxfSubClassAttribute att = p.GetCustomAttribute<DxfSubClassAttribute>();
-				if (att == null)
-					continue;
-
-				map.Add(att.ClassName, p);
-			}
-
-			return map;
-		}
 	}
 }

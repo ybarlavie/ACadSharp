@@ -5,9 +5,15 @@ namespace ACadSharp.Tables.Collections
 {
 	public class TextStylesTable : Table<TextStyle>
 	{
+		/// <inheritdoc/>
 		public override ObjectType ObjectType => ObjectType.STYLE_CONTROL_OBJ;
 
-		public TextStylesTable(CadDocument document) : base(document) { }
+		/// <inheritdoc/>
+		public override string ObjectName => DxfFileToken.TableStyle;
+
+		internal TextStylesTable() : base() { }
+
+		internal TextStylesTable(CadDocument document) : base(document) { }
 
 		public override void Add(TextStyle item)
 		{

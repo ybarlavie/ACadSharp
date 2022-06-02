@@ -6,31 +6,26 @@ using System.Collections.Generic;
 
 namespace ACadSharp
 {
-	public class LayoutCollection : CadObject, IObservableCollection<Layout>
+	public class LayoutCollection : IObservableCollection<Layout>
 	{
-		public event EventHandler<CollectionChangedEventArgs> OnBeforeAdd;
-		public event EventHandler<CollectionChangedEventArgs> OnAdd;
-		public event EventHandler<CollectionChangedEventArgs> OnBeforeRemove;
-		public event EventHandler<CollectionChangedEventArgs> OnRemove;
+		public event EventHandler<ReferenceChangedEventArgs> OnAdd;
+		public event EventHandler<ReferenceChangedEventArgs> OnRemove;
 
-		public override ObjectType ObjectType => ObjectType.UNASSIGNED;
+		public CadDocument Owner { get; }
 
 		private readonly Dictionary<ulong, Layout> _entries = new Dictionary<ulong, Layout>();
 
 		public LayoutCollection(CadDocument document)
 		{
-			this.Document = document;
-			this.Document.RegisterCollection(this);
+			this.Owner = document;
+			document.RegisterCollection(this);
 		}
 
-		public void Add(Layout item)
+		public void Add(Layout layout)
 		{
-			OnBeforeAdd?.Invoke(this, new CollectionChangedEventArgs(item));
+			this._entries.Add(layout.Handle, layout);
 
-			this._entries.Add(item.Handle, item);
-			item.Owner = this.Owner;
-
-			OnAdd?.Invoke(this, new CollectionChangedEventArgs(item));
+			OnAdd?.Invoke(this, new ReferenceChangedEventArgs(layout));
 		}
 
 		public void AddRange(IEnumerable<Layout> items)

@@ -115,7 +115,7 @@ namespace ACadSharp.IO.DWG
 				ulong handle = this._handles.Dequeue();
 
 				//Check if the handle has already been read
-				if (!this._map.TryGetValue(handle, out long offset) || this._builder.Templates.ContainsKey(handle))
+				if (!this._map.TryGetValue(handle, out long offset) || this._builder.TryGetObjectTemplate(handle, out CadTemplate _))
 				{
 					continue;
 				}
@@ -124,10 +124,11 @@ namespace ACadSharp.IO.DWG
 				ObjectType type = this.getEntityType(offset);
 
 				//Read the object
-				DwgTemplate template = this.readObject(type, notificationEvent);
+				CadTemplate template = this.readObject(type, notificationEvent);
 
 				//Add the template to the list to be processed
-				this._builder.Templates[handle] = template;
+				if (template != null)
+					this._builder.AddTemplate(template);
 			}
 		}
 
@@ -213,7 +214,7 @@ namespace ACadSharp.IO.DWG
 			//Read the handle
 			ulong value = this._handlesReader.HandleReference(handle);
 
-			if (!this._builder.Templates.ContainsKey(value) && !this._handles.Contains(value) && value != 0)
+			if (!this._builder.TryGetObjectTemplate(value, out CadTemplate _) && !this._handles.Contains(value) && value != 0)
 				//Add the value to the handles queue to be processed
 				this._handles.Enqueue(value);
 
@@ -224,7 +225,7 @@ namespace ACadSharp.IO.DWG
 		/// Read the common entity format.
 		/// </summary>
 		/// <param name="template"></param>
-		private void readCommonEntityData(DwgEntityTemplate template)
+		private void readCommonEntityData(CadEntityTemplate template)
 		{
 			//Get the cad object as an entity
 			Entity entity = template.CadObject;
@@ -355,7 +356,7 @@ namespace ACadSharp.IO.DWG
 				if (this._objectReader.Read2Bits() == 3)
 				{
 					//MATERIAL present if material flags were 11
-					this.handleReference();
+					template.MaterialHandle = this.handleReference();
 				}
 
 				//Shadow flags RC
@@ -401,7 +402,7 @@ namespace ACadSharp.IO.DWG
 			entity.Lineweight = (LineweightType)this._objectReader.ReadByte();
 		}
 
-		private void readCommonNonEntityData(DwgTemplate template)
+		private void readCommonNonEntityData(CadTemplate template)
 		{
 			if (this._version >= ACadVersion.AC1015 && this._version < ACadVersion.AC1024)
 				//Obj size RL size of object in bits, not including end handles
@@ -457,7 +458,7 @@ namespace ACadSharp.IO.DWG
 			}
 		}
 
-		private void readExtendedData(DwgTemplate template)
+		private void readExtendedData(CadTemplate template)
 		{
 			//EED directly follows the entity handle.
 			//Each application's data is structured as follows:
@@ -579,7 +580,7 @@ namespace ACadSharp.IO.DWG
 		}
 
 		// Add the reactors to the template.
-		private void readReactors(DwgTemplate template)
+		private void readReactors(CadTemplate template)
 		{
 			//Numreactors S number of reactors in this object
 			int numberOfReactors = this._objectReader.ReadBitLong();
@@ -637,9 +638,9 @@ namespace ACadSharp.IO.DWG
 
 		#region Object readers
 
-		private DwgTemplate readObject(ObjectType type, NotificationEventHandler notifications = null)
+		private CadTemplate readObject(ObjectType type, NotificationEventHandler notifications = null)
 		{
-			DwgTemplate template = null;
+			CadTemplate template = null;
 
 			switch (type)
 			{
@@ -781,13 +782,13 @@ namespace ACadSharp.IO.DWG
 					template = this.readBlockHeader();
 					break;
 				case ObjectType.LAYER_CONTROL_OBJ:
-					template = this.readLayerControlObject();
+					template = this.readDocumentTable(new LayersTable());
 					break;
 				case ObjectType.LAYER:
 					template = this.readLayer();
 					break;
 				case ObjectType.STYLE_CONTROL_OBJ:
-					template = this.readStyleControlObject();
+					template = this.readDocumentTable(new TextStylesTable());
 					break;
 				case ObjectType.STYLE:
 					template = this.readTextStyle();
@@ -807,31 +808,31 @@ namespace ACadSharp.IO.DWG
 				case ObjectType.UNKNOW_3B:
 					break;
 				case ObjectType.VIEW_CONTROL_OBJ:
-					template = this.readViewControlObject();
+					template = this.readDocumentTable(new ViewsTable());
 					break;
 				case ObjectType.VIEW:
 					template = this.readView();
 					break;
 				case ObjectType.UCS_CONTROL_OBJ:
-					template = this.readUcsControlObject();
+					template = this.readDocumentTable(new UCSTable());
 					break;
 				case ObjectType.UCS:
 					template = this.readUcs();
 					break;
 				case ObjectType.VPORT_CONTROL_OBJ:
-					template = this.readVPortControlObject();
+					template = this.readDocumentTable(new VPortsTable());
 					break;
 				case ObjectType.VPORT:
 					template = this.readVPort();
 					break;
 				case ObjectType.APPID_CONTROL_OBJ:
-					template = this.readAppIdControlObject();
+					template = this.readDocumentTable(new AppIdsTable());
 					break;
 				case ObjectType.APPID:
 					template = this.readAppId();
 					break;
 				case ObjectType.DIMSTYLE_CONTROL_OBJ:
-					template = this.readDimStyleControlObject();
+					template = this.readDocumentTable(new DimensionStylesTable());
 					break;
 				case ObjectType.DIMSTYLE:
 					template = this.readDimStyle();
@@ -855,6 +856,7 @@ namespace ACadSharp.IO.DWG
 				case ObjectType.LONG_TRANSACTION:
 					break;
 				case ObjectType.LWPOLYLINE:
+					template = this.readLWPolyline();
 					break;
 				case ObjectType.HATCH:
 					template = this.readHatch();
@@ -882,7 +884,7 @@ namespace ACadSharp.IO.DWG
 				case ObjectType.ACAD_PROXY_OBJECT:
 					break;
 				default:
-					return this.readUnlistedType((short)type);
+					return this.readUnlistedType((short)type, notifications);
 			}
 
 			if (template == null)
@@ -891,12 +893,12 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readUnlistedType(short classNumber, NotificationEventHandler notifications = null)
+		private CadTemplate readUnlistedType(short classNumber, NotificationEventHandler notifications = null)
 		{
 			if (!this._classes.TryGetValue(classNumber, out DxfClass c))
 				return null;
 
-			DwgTemplate template = null;
+			CadTemplate template = null;
 
 			switch (c.DxfName)
 			{
@@ -912,8 +914,9 @@ namespace ACadSharp.IO.DWG
 				case "DICTIONARYVAR":
 				case "DICTIONARYWDFLT":
 				case "FIELD":
+					break;
 				case "GROUP":
-					//System.Diagnostics.Debug.Fail($"Not implemented dxf class: {c.DxfName}");
+					template = this.readGroup();
 					break;
 				case "HATCH":
 					template = this.readHatch();
@@ -923,7 +926,10 @@ namespace ACadSharp.IO.DWG
 				case "IMAGEDEF":
 				case "IMAGEDEFREACTOR":
 				case "LAYER_INDEX":
+					break;
 				case "LAYOUT":
+					template = readLayout();
+					break;
 				case "LWPLINE":
 				case "MATERIAL":
 				case "MLEADER":
@@ -944,23 +950,23 @@ namespace ACadSharp.IO.DWG
 				case "WIPEOUT":
 				case "WIPEOUTVARIABLE":
 				case "WIPEOUTVARIABLES":
+					break;
 				case "XRECORD":
-					//System.Diagnostics.Debug.Fail($"Not implemented dxf class: {c.DxfName}");
+					template = readXRecord();
 					break;
 				default:
-					//System.Diagnostics.Debug.Fail($"Not implemented dxf class: {c.DxfName}");
 					break;
 			}
 
 			if (template == null)
-				notifications?.Invoke(null, new NotificationEventArgs($"Unlisted object not implemented, DXF name: {c.DxfName}"));
+				notifications?.Invoke(c, new NotificationEventArgs($"Unlisted object not implemented, DXF name: {c.DxfName}"));
 
 			return template;
 		}
 
 		#region Text entities
 
-		private DwgTemplate readText()
+		private CadTemplate readText()
 		{
 			TextEntity text = new TextEntity();
 			DwgTextEntityTemplate template = new DwgTextEntityTemplate(text);
@@ -970,7 +976,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readAttribute()
+		private CadTemplate readAttribute()
 		{
 			AttributeEntity att = new AttributeEntity();
 			DwgTextEntityTemplate template = new DwgTextEntityTemplate(att);
@@ -982,7 +988,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readAttributeDefinition()
+		private CadTemplate readAttributeDefinition()
 		{
 			AttributeDefinition attdef = new AttributeDefinition();
 			DwgTextEntityTemplate template = new DwgTextEntityTemplate(attdef);
@@ -1044,7 +1050,7 @@ namespace ACadSharp.IO.DWG
 				//Horiz align. BS 72
 				text.HorizontalAlignment = (TextHorizontalAlignment)this._objectReader.ReadBitShort();
 				//Vert align. BS 73
-				text.VerticalAlignment = (TextVerticalAlignment)this._objectReader.ReadBitShort();
+				text.VerticalAlignment = (TextVerticalAlignmentType)this._objectReader.ReadBitShort();
 
 				//Common:
 				//Common Entity Handle Data H 7 STYLE(hard pointer)
@@ -1099,7 +1105,7 @@ namespace ACadSharp.IO.DWG
 				text.HorizontalAlignment = (TextHorizontalAlignment)this._objectReader.ReadBitShort();
 			//Vert align. BS 73 present if !(DataFlags & 0x80)
 			if ((dataFlags & 0x80) == 0)
-				text.VerticalAlignment = (TextVerticalAlignment)this._objectReader.ReadBitShort();
+				text.VerticalAlignment = (TextVerticalAlignmentType)this._objectReader.ReadBitShort();
 
 			//Common:
 			//Common Entity Handle Data H 7 STYLE(hard pointer)
@@ -1164,15 +1170,20 @@ namespace ACadSharp.IO.DWG
 
 		#endregion Text entities
 
-		private DwgTemplate readDocumentTable<T>(Table<T> table)
+		private CadTemplate readDocumentTable<T>(Table<T> table, DwgTableTemplate<T> template = null)
 			where T : TableEntry
 		{
-			DwgTableTemplate<T> template = new DwgTableTemplate<T>(table);
+			if (template == null)
+				template = new DwgTableTemplate<T>(table);
 
 			this.readCommonNonEntityData(template);
 
+			this._builder.DocumentToBuild.RegisterCollection(template.CadObject);
+
 			//Common:
 			//Numentries BL 70
+			//Blocks: 	Numentries BL 70 Doesn't count *MODEL_SPACE and *PAPER_SPACE
+			//Layers: 	Numentries BL 70 Counts layer "0", too
 			int numentries = this._objectReader.ReadBitLong();
 			for (int i = 0; i < numentries; ++i)
 				//Handle refs H NULL(soft pointer)
@@ -1183,10 +1194,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readBlock()
+		private CadTemplate readBlock()
 		{
 			Block block = new Block(new BlockRecord());
-			DwgEntityTemplate template = new DwgEntityTemplate(block);
+			CadEntityTemplate template = new CadEntityTemplate(block);
 
 			this.readCommonEntityData(template);
 
@@ -1196,19 +1207,19 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readEndBlock()
+		private CadTemplate readEndBlock()
 		{
-			BlockEnd block = new BlockEnd();
-			DwgEntityTemplate template = new DwgEntityTemplate(block);
+			BlockEnd block = new BlockEnd(new BlockRecord());
+			CadEntityTemplate template = new CadEntityTemplate(block);
 
 			this.readCommonEntityData(template);
 
 			return template;
 		}
 
-		private DwgTemplate readSeqend()
+		private CadTemplate readSeqend()
 		{
-			DwgEntityTemplate template = new DwgEntityTemplate(new Seqend());
+			CadEntityTemplate template = new CadEntityTemplate(new Seqend());
 
 			this.readCommonEntityData(template);
 
@@ -1217,7 +1228,7 @@ namespace ACadSharp.IO.DWG
 
 		#region Insert methods
 
-		private DwgTemplate readInsert()
+		private CadTemplate readInsert()
 		{
 			DwgInsertTemplate template = new DwgInsertTemplate(new Insert());
 
@@ -1227,7 +1238,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readMInsert()
+		private CadTemplate readMInsert()
 		{
 			Insert insert = new Insert();
 			DwgInsertTemplate template = new DwgInsertTemplate(insert);
@@ -1261,44 +1272,45 @@ namespace ACadSharp.IO.DWG
 			//R13-R14 Only:
 			if (this.R13_14Only)
 			{
+				XYZ scale = this._objectReader.Read3BitDouble();
 				//X Scale BD 41
+				insert.XScale = scale.X;
 				//Y Scale BD 42
+				insert.YScale = scale.Y;
 				//Z Scale BD 43
-				insert.Scale = this._objectReader.Read3BitDouble();
+				insert.ZScale = scale.Z;
 			}
 
 			//R2000 + Only:
 			if (this.R2000Plus)
 			{
-				double x = 1.0;
-				double y = 1.0;
-				double z = 1.0;
-
 				//Data flags BB
 				//Scale Data Varies with Data flags:
 				switch (this._objectReader.Read2Bits())
 				{
 					//00 – 41 value stored as a RD, followed by a 42 value stored as DD (use 41 for default value), and a 43 value stored as a DD(use 41 value for default value).
 					case 0:
-						x = this._objectReader.ReadDouble();
-						y = this._objectReader.ReadBitDoubleWithDefault(x);
-						z = this._objectReader.ReadBitDoubleWithDefault(x);
-						insert.Scale = new XYZ(x, y, z);
+						insert.XScale = this._objectReader.ReadDouble();
+						insert.YScale = this._objectReader.ReadBitDoubleWithDefault(insert.XScale);
+						insert.ZScale = this._objectReader.ReadBitDoubleWithDefault(insert.XScale);
 						break;
 					//01 – 41 value is 1.0, 2 DD’s are present, each using 1.0 as the default value, representing the 42 and 43 values.
 					case 1:
-						y = this._objectReader.ReadBitDoubleWithDefault(x);
-						z = this._objectReader.ReadBitDoubleWithDefault(x);
-						insert.Scale = new XYZ(x, y, z);
+						insert.YScale = this._objectReader.ReadBitDoubleWithDefault(insert.XScale);
+						insert.ZScale = this._objectReader.ReadBitDoubleWithDefault(insert.XScale);
 						break;
 					//10 – 41 value stored as a RD, and 42 & 43 values are not stored, assumed equal to 41 value.
 					case 2:
 						double xyz = this._objectReader.ReadDouble();
-						insert.Scale = new XYZ(xyz, xyz, xyz);
+						insert.XScale = xyz;
+						insert.YScale = xyz;
+						insert.ZScale = xyz;
 						break;
 					//11 - scale is (1.0, 1.0, 1.0), no data stored.
 					case 3:
-						insert.Scale = new XYZ(x, y, z);
+						insert.XScale = 1;
+						insert.YScale = 1;
+						insert.ZScale = 1;
 						break;
 				}
 			}
@@ -1351,10 +1363,10 @@ namespace ACadSharp.IO.DWG
 
 		#endregion Insert methods
 
-		private DwgTemplate readVertex2D()
+		private CadTemplate readVertex2D()
 		{
-			Vertex vertex = new Vertex();
-			DwgEntityTemplate template = new DwgEntityTemplate(vertex);
+			Vertex2D vertex = new Vertex2D();
+			CadEntityTemplate template = new CadEntityTemplate(vertex);
 
 			this.readCommonEntityData(template);
 
@@ -1393,10 +1405,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readVertex3D()
+		private CadTemplate readVertex3D()
 		{
-			Vertex vertex = new Vertex();
-			DwgEntityTemplate template = new DwgEntityTemplate(vertex);
+			Vertex3D vertex = new Vertex3D();
+			CadEntityTemplate template = new CadEntityTemplate(vertex);
 
 			this.readCommonEntityData(template);
 
@@ -1408,11 +1420,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readPfaceVertex()
+		private CadTemplate readPfaceVertex()
 		{
-			//TODO: Implement poly face vertex class
-			Vertex vertex = new Vertex();
-			DwgEntityTemplate template = new DwgEntityTemplate(vertex);
+			Vertex2D vertex = new Vertex2D();
+			CadEntityTemplate template = new CadEntityTemplate(vertex);
 
 			this.readCommonEntityData(template);
 
@@ -1428,10 +1439,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readPolyline2D()
+		private CadTemplate readPolyline2D()
 		{
-			PolyLine2D pline = new PolyLine2D();
-			DwgPolyLineTemplate template = new DwgPolyLineTemplate(pline);
+			Polyline2D pline = new Polyline2D();
+			CadPolyLineTemplate template = new CadPolyLineTemplate(pline);
 
 			this.readCommonEntityData(template);
 
@@ -1476,10 +1487,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readPolyline3D()
+		private CadTemplate readPolyline3D()
 		{
-			PolyLine3D pline = new PolyLine3D();
-			DwgPolyLineTemplate template = new DwgPolyLineTemplate(pline);
+			Polyline3D pline = new Polyline3D();
+			CadPolyLineTemplate template = new CadPolyLineTemplate(pline);
 
 			this.readCommonEntityData(template);
 
@@ -1527,10 +1538,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readArc()
+		private CadTemplate readArc()
 		{
 			Arc arc = new Arc();
-			DwgEntityTemplate template = new DwgEntityTemplate(arc);
+			CadEntityTemplate template = new CadEntityTemplate(arc);
 
 			this.readCommonEntityData(template);
 
@@ -1550,10 +1561,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readCircle()
+		private CadTemplate readCircle()
 		{
 			Circle circle = new Circle();
-			DwgEntityTemplate template = new DwgEntityTemplate(circle);
+			CadEntityTemplate template = new CadEntityTemplate(circle);
 
 			this.readCommonEntityData(template);
 
@@ -1569,10 +1580,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readLine()
+		private CadTemplate readLine()
 		{
 			Line line = new Line();
-			DwgEntityTemplate template = new DwgEntityTemplate(line);
+			CadEntityTemplate template = new CadEntityTemplate(line);
 
 			this.readCommonEntityData(template);
 
@@ -1625,7 +1636,7 @@ namespace ACadSharp.IO.DWG
 
 		#region Dimensions
 
-		private DwgTemplate readDimOrdinate()
+		private CadTemplate readDimOrdinate()
 		{
 			DimensionOrdinate dimension = new DimensionOrdinate();
 			DwgDimensionTemplate template = new DwgDimensionTemplate(dimension);
@@ -1645,7 +1656,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDimLinear()
+		private CadTemplate readDimLinear()
 		{
 			DimensionLinear dimension = new DimensionLinear();
 			DwgDimensionTemplate template = new DwgDimensionTemplate(dimension);
@@ -1662,7 +1673,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDimAligned()
+		private CadTemplate readDimAligned()
 		{
 			DimensionLinear dimension = new DimensionLinear();
 			DwgDimensionTemplate template = new DwgDimensionTemplate(dimension);
@@ -1676,7 +1687,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDimAngular3pt()
+		private CadTemplate readDimAngular3pt()
 		{
 			DimensionAngular3Pt dimension = new DimensionAngular3Pt();
 			DwgDimensionTemplate template = new DwgDimensionTemplate(dimension);
@@ -1698,7 +1709,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDimLine2pt()
+		private CadTemplate readDimLine2pt()
 		{
 			DimensionAngular2Line dimension = new DimensionAngular2Line();
 			DwgDimensionTemplate template = new DwgDimensionTemplate(dimension);
@@ -1724,7 +1735,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDimRadius()
+		private CadTemplate readDimRadius()
 		{
 			DimensionRadius dimension = new DimensionRadius();
 			DwgDimensionTemplate template = new DwgDimensionTemplate(dimension);
@@ -1744,7 +1755,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDimDiameter()
+		private CadTemplate readDimDiameter()
 		{
 			DimensionDiameter dimension = new DimensionDiameter();
 			DwgDimensionTemplate template = new DwgDimensionTemplate(dimension);
@@ -1875,10 +1886,10 @@ namespace ACadSharp.IO.DWG
 
 		#endregion
 
-		private DwgTemplate readPoint()
+		private CadTemplate readPoint()
 		{
 			Point pt = new Point();
-			DwgEntityTemplate template = new DwgEntityTemplate(pt);
+			CadEntityTemplate template = new CadEntityTemplate(pt);
 
 			this.readCommonEntityData(template);
 
@@ -1894,10 +1905,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate read3dFace()
+		private CadTemplate read3dFace()
 		{
 			Face3D face = new Face3D();
-			DwgEntityTemplate template = new DwgEntityTemplate(face);
+			CadEntityTemplate template = new CadEntityTemplate(face);
 
 			this.readCommonEntityData(template);
 
@@ -1951,20 +1962,20 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readPolylinePface()
+		private CadTemplate readPolylinePface()
 		{
 			return null;
 		}
 
-		private DwgTemplate readPolylineMesh()
+		private CadTemplate readPolylineMesh()
 		{
 			return null;
 		}
 
-		private DwgTemplate readSolid()
+		private CadTemplate readSolid()
 		{
 			Solid solid = new Solid();
-			DwgEntityTemplate template = new DwgEntityTemplate(solid);
+			CadEntityTemplate template = new CadEntityTemplate(solid);
 
 			//Common Entity Data
 			this.readCommonEntityData(template);
@@ -1997,7 +2008,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readShape()
+		private CadTemplate readShape()
 		{
 			Shape shape = new Shape();
 			CadShapeTemplate template = new CadShapeTemplate(shape);
@@ -2034,7 +2045,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readViewport()
+		private CadTemplate readViewport()
 		{
 			Viewport viewport = new Viewport();
 			DwgViewportTemplate template = new DwgViewportTemplate(viewport);
@@ -2179,10 +2190,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readEllipse()
+		private CadTemplate readEllipse()
 		{
 			Ellipse ellipse = new Ellipse();
-			DwgEntityTemplate template = new DwgEntityTemplate(ellipse);
+			CadEntityTemplate template = new CadEntityTemplate(ellipse);
 
 			this.readCommonEntityData(template);
 
@@ -2202,10 +2213,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readSpline()
+		private CadTemplate readSpline()
 		{
 			Spline spline = new Spline();
-			DwgEntityTemplate template = new DwgEntityTemplate(spline);
+			CadEntityTemplate template = new CadEntityTemplate(spline);
 
 			this.readCommonEntityData(template);
 
@@ -2317,10 +2328,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readRay()
+		private CadTemplate readRay()
 		{
 			Ray ray = new Ray();
-			DwgEntityTemplate template = new DwgEntityTemplate(ray);
+			CadEntityTemplate template = new CadEntityTemplate(ray);
 
 			this.readCommonEntityData(template);
 
@@ -2332,10 +2343,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readXLine()
+		private CadTemplate readXLine()
 		{
 			XLine xline = new XLine();
-			DwgEntityTemplate template = new DwgEntityTemplate(xline);
+			CadEntityTemplate template = new CadEntityTemplate(xline);
 
 			this.readCommonEntityData(template);
 
@@ -2347,10 +2358,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDictionary()
+		private CadTemplate readDictionary()
 		{
 			CadDictionary cadDictionary = new CadDictionary();
-			DwgDictionaryTemplate template = new DwgDictionaryTemplate(cadDictionary);
+			CadDictionaryTemplate template = new CadDictionaryTemplate(cadDictionary);
 
 			this.readCommonNonEntityData(template);
 
@@ -2390,7 +2401,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readMText()
+		private CadTemplate readMText()
 		{
 			MText mtext = new MText();
 			DwgTextEntityTemplate template = new DwgTextEntityTemplate(mtext);
@@ -2529,7 +2540,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readLeader()
+		private CadTemplate readLeader()
 		{
 			Leader leader = new Leader();
 			CadLeaderTemplate template = new CadLeaderTemplate(leader);
@@ -2635,10 +2646,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readMLine()
+		private CadTemplate readMLine()
 		{
 			MLine mline = new MLine();
-			DwgMLineTemplate template = new DwgMLineTemplate(mline);
+			CadMLineTemplate template = new CadMLineTemplate(mline);
 
 			this.readCommonEntityData(template);
 
@@ -2679,8 +2690,7 @@ namespace ACadSharp.IO.DWG
 					for (int k = 0; k < nsegparms; ++k)
 					{
 						//segparm BD segment parameter
-						double num5 = this._objectReader.ReadBitDouble();
-						element.Parameters.Add(num5);
+						element.Parameters.Add(this._objectReader.ReadBitDouble());
 					}
 
 					//numareafillparms BS
@@ -2688,8 +2698,7 @@ namespace ACadSharp.IO.DWG
 					for (int k = 0; k < nfillparms; ++k)
 					{
 						//areafillparm BD area fill parameter
-						double num5 = this._objectReader.ReadBitDouble();
-						element.AreaFillParameters.Add(num5);
+						element.AreaFillParameters.Add(this._objectReader.ReadBitDouble());
 					}
 
 					vertex.Segments.Add(element);
@@ -2704,20 +2713,12 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readBlockControlObject()
+		private CadTemplate readBlockControlObject()
 		{
-			DwgBlockCtrlObjectTemplate template = new DwgBlockCtrlObjectTemplate(this._builder.DocumentToBuild.BlockRecords);
+			DwgBlockCtrlObjectTemplate template = new DwgBlockCtrlObjectTemplate(
+				new BlockRecordsTable());
 
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70 Doesn't count *MODEL_SPACE and *PAPER_SPACE.
-			var nentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < nentries; i++)
-			{
-				//xdicobjhandle (hard owner)
-				template.EntryHandles.Add(this.handleReference());
-			}
+			this.readDocumentTable(template.CadObject, template);
 
 			//*MODEL_SPACE and *PAPER_SPACE(hard owner).
 			template.ModelSpaceHandle = this.handleReference();
@@ -2726,11 +2727,12 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readBlockHeader()
+		private CadTemplate readBlockHeader()
 		{
 			BlockRecord record = new BlockRecord();
 			Block block = record.BlockEntity;
-			DwgBlockRecordTemplate template = new DwgBlockRecordTemplate(record);
+
+			CadBlockRecordTemplate template = new CadBlockRecordTemplate(record);
 			this._builder.BlockRecordTemplates.Add(template);
 
 			this.readCommonNonEntityData(template);
@@ -2739,8 +2741,8 @@ namespace ACadSharp.IO.DWG
 			//Entry name TV 2
 			//Warning: names ended with a number are not readed in this method
 			string name = this._textReader.ReadVariableText();
-			if (name.Equals("*Model_Space", System.StringComparison.CurrentCultureIgnoreCase) ||
-				name.Equals("*Paper_Space", System.StringComparison.CurrentCultureIgnoreCase))
+			if (name.Equals(BlockRecord.ModelSpaceName, System.StringComparison.CurrentCultureIgnoreCase) ||
+				name.Equals(BlockRecord.PaperSpaceName, System.StringComparison.CurrentCultureIgnoreCase))
 				record.Name = name;
 
 			this.readXrefDependantBit(template.CadObject);
@@ -2860,27 +2862,11 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readLayerControlObject()
-		{
-			DwgTableTemplate<Layer> template = new DwgTableTemplate<Layer>(this._builder.DocumentToBuild.Layers);
-
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70 Counts layer "0", too.
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer)	xdicobjhandle(hard owner)	the apps(soft owner)
-				template.EntryHandles.Add(this.handleReference());
-
-			return template;
-		}
-
-		private DwgTemplate readLayer()
+		private CadTemplate readLayer()
 		{
 			//Initialize the template with the default layer
-			Layer layer = Layer.Default;
-			DwgLayerTemplate template = new DwgLayerTemplate(layer);
+			Layer layer = new Layer();
+			CadLayerTemplate template = new CadLayerTemplate(layer);
 
 			this.readCommonNonEntityData(template);
 
@@ -2969,27 +2955,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readStyleControlObject()
-		{
-			DwgTableTemplate<TextStyle> template = new DwgTableTemplate<TextStyle>(
-				this._builder.DocumentToBuild.TextStyles);
-
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70 
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer) xdicobjhandle(hard owner)
-				template.EntryHandles.Add(this.handleReference());
-
-			return template;
-		}
-
-		private DwgTemplate readTextStyle()
+		private CadTemplate readTextStyle()
 		{
 			TextStyle style = new TextStyle();
-			DwgTableEntryTemplate<TextStyle> template = new DwgTableEntryTemplate<TextStyle>(style);
+			CadTableEntryTemplate<TextStyle> template = new CadTableEntryTemplate<TextStyle>(style);
 
 			this.readCommonNonEntityData(template);
 
@@ -3025,19 +2994,12 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readLTypeControlObject()
+		private CadTemplate readLTypeControlObject()
 		{
 			DwgTableTemplate<LineType> template = new DwgTableTemplate<LineType>(
-				this._builder.DocumentToBuild.LineTypes);
+				new LineTypesTable());
 
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70 
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer) xdicobjhandle(hard owner)
-				template.EntryHandles.Add(this.handleReference());
+			this.readDocumentTable(template.CadObject, template);
 
 			//the linetypes, ending with BYLAYER and BYBLOCK.
 			template.EntryHandles.Add(this.handleReference());
@@ -3046,10 +3008,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readLType()
+		private CadTemplate readLType()
 		{
 			LineType ltype = new LineType();
-			DwgTableEntryTemplate<LineType> template = new DwgTableEntryTemplate<LineType>(ltype);
+			CadLineTypeTemplate template = new CadLineTypeTemplate(ltype);
 
 			this.readCommonNonEntityData(template);
 
@@ -3079,7 +3041,7 @@ namespace ACadSharp.IO.DWG
 				//Complex shapecode BS 75 Shape number if shapeflag is 2, or index into the string area if shapeflag is 4.
 				short shapecode = this._objectReader.ReadBitShort();
 
-				//X-offset RD 44 (0.0 for a simple dash.)
+				//X - offset RD 44 (0.0 for a simple dash.)
 				//Y - offset RD 45(0.0 for a simple dash.)
 				XY offset = new XY(this._objectReader.ReadDouble(), this._objectReader.ReadDouble());
 				segment.Offset = offset;
@@ -3132,51 +3094,17 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readViewControlObject()
-		{
-			DwgTableTemplate<View> template = new DwgTableTemplate<View>(
-				this._builder.DocumentToBuild.Views);
-
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer)	xdicobjhandle(hard owner)	the apps(soft owner)
-				template.EntryHandles.Add(this.handleReference());
-
-			return template;
-		}
-
-		private DwgTemplate readView()
+		private CadTemplate readView()
 		{
 
 
 			return null;
 		}
 
-		private DwgTemplate readUcsControlObject()
-		{
-			DwgTableTemplate<UCS> template = new DwgTableTemplate<UCS>(
-				this._builder.DocumentToBuild.UCSs);
-
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer)	xdicobjhandle(hard owner)	the apps(soft owner)
-				template.EntryHandles.Add(this.handleReference());
-
-			return template;
-		}
-
-		private DwgTemplate readUcs()
+		private CadTemplate readUcs()
 		{
 			UCS ucs = new UCS();
-			DwgTemplate<UCS> template = new DwgTemplate<UCS>(ucs);
+			CadTemplate<UCS> template = new CadTemplate<UCS>(ucs);
 
 			this.readCommonNonEntityData(template);
 
@@ -3220,27 +3148,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readVPortControlObject()
-		{
-			DwgTableTemplate<VPort> template = new DwgTableTemplate<VPort>(
-				this._builder.DocumentToBuild.VPorts);
-
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer)	xdicobjhandle(hard owner)	the apps(soft owner)
-				template.EntryHandles.Add(this.handleReference());
-
-			return template;
-		}
-
-		private DwgTemplate readVPort()
+		private CadTemplate readVPort()
 		{
 			VPort vport = new VPort();
-			DwgVPortTemplate template = new DwgVPortTemplate(vport);
+			CadVPortTemplate template = new CadVPortTemplate(vport);
 
 			this.readCommonNonEntityData(template);
 
@@ -3394,7 +3305,7 @@ namespace ACadSharp.IO.DWG
 				//Background handle H 332 soft pointer
 				template.BackgroundHandle = this.handleReference();
 				//Visual Style handle H 348 hard pointer
-				template.StyelHandle = this.handleReference();
+				template.StyleHandle = this.handleReference();
 				//Sun handle H 361 hard owner
 				template.SunHandle = this.handleReference();
 			}
@@ -3411,29 +3322,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readAppIdControlObject()
-		{
-			DwgTableTemplate<AppId> template = new DwgTableTemplate<AppId>(
-				this._builder.DocumentToBuild.AppIds);
-
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer)
-				//xdicobjhandle(hard owner)
-				//the apps(soft owner)
-				template.EntryHandles.Add(this.handleReference());
-
-			return template;
-		}
-
-		private DwgTemplate readAppId()
+		private CadTemplate readAppId()
 		{
 			AppId appId = new AppId();
-			DwgTemplate template = new DwgTemplate<AppId>(appId);
+			CadTemplate template = new CadTemplate<AppId>(appId);
 
 			this.readCommonNonEntityData(template);
 
@@ -3452,26 +3344,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readDimStyleControlObject()
-		{
-			DwgTableTemplate<DimensionStyle> template = new DwgTableTemplate<DimensionStyle>(
-				this._builder.DocumentToBuild.DimensionStyles);
-
-			this.readCommonNonEntityData(template);
-
-			//Common:
-			//Numentries BL 70
-			int numentries = this._objectReader.ReadBitLong();
-			for (int i = 0; i < numentries; ++i)
-				//Handle refs H NULL(soft pointer)	
-				//xdicobjhandle(hard owner)	
-				//the apps(soft owner)
-				template.EntryHandles.Add(this.handleReference());
-
-			return template;
-		}
-
-		private DwgTemplate readDimStyle()
+		private CadTemplate readDimStyle()
 		{
 			DimensionStyle dimStyle = new DimensionStyle();
 			DwgDimensionStyleTemplate template = new DwgDimensionStyleTemplate(dimStyle);
@@ -3814,8 +3687,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readViewportEntityControl()
+		private CadTemplate readViewportEntityControl()
 		{
+			return null;
+
 			DwgViewportEntityControlTemplate template = new DwgViewportEntityControlTemplate(
 				this._builder.DocumentToBuild.Viewports);
 
@@ -3831,37 +3706,35 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readViewportEntityHeader()
+		private CadTemplate readViewportEntityHeader()
 		{
-			/*
-			  ViewportEntityHeader viewportEntityHeader = new ViewportEntityHeader();
-			  DwgTableEntryTemplate<ViewportEntityHeader> template = new DwgTableEntryTemplate<ViewportEntityHeader>(viewportEntityHeader);
+			//Viewport viewport = new Viewport();
+			//DwgViewportTemplate template = new DwgViewportTemplate(viewport);
 
-			  this.readCommonNonEntityData(template);
+			//this.readCommonNonEntityData(template);
 
-			  //Common:
-			  //Entry name TV 2
-			  viewportEntityHeader.Name = this._textReader.ReadVariableText();
+			////Common:
+			////Entry name TV 2
+			//viewport.StyleSheetName = this._textReader.ReadVariableText();
 
-			  this.readXrefDependantBit(viewportEntityHeader);
+			//this.readXrefDependantBit(viewport);
 
-			  //1 flag B The 1 bit of the 70 group
-			  this._objectReader.ReadBit();
+			////1 flag B The 1 bit of the 70 group
+			//this._objectReader.ReadBit();
 
-			  //Handle refs H viewport entity control (soft pointer)
-			  this.handleReference();
-			  //xdicobjhandle (hard owner)
-			  this.handleReference();
-			  //External reference block handle (hard pointer)
-			  this.handleReference();
+			////Handle refs H viewport entity control (soft pointer)
+			//this.handleReference();
+			////xdicobjhandle (hard owner)
+			//this.handleReference();
+			////External reference block handle (hard pointer)
+			//this.handleReference();
 
-			  //TODO: ViewportEntityHeader is it necessary?
-			  */
+			//TODO: transform the viewport ent into the viewport
 
 			return null;
 		}
 
-		private DwgTemplate readGroup()
+		private CadTemplate readGroup()
 		{
 			Group group = new Group();
 			DwgGroupTemplate template = new DwgGroupTemplate(group);
@@ -3885,7 +3758,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readMLStyle()
+		private CadTemplate readMLStyle()
 		{
 			MLStyle mlineStyle = new MLStyle();
 			DwgMLStyleTemplate template = new DwgMLStyleTemplate(mlineStyle);
@@ -3963,50 +3836,51 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readHatch()
+		private CadTemplate readLWPolyline()
+		{
+			return null;
+		}
+
+		private CadTemplate readHatch()
 		{
 			Hatch hatch = new Hatch();
-			DwgHatchTemplate template = new DwgHatchTemplate(hatch);
+			CadHatchTemplate template = new CadHatchTemplate(hatch);
 
 			this.readCommonEntityData(template);
 
 			//R2004+:
 			if (this.R2004Plus)
 			{
-				HatchGradientPattern gradient = new HatchGradientPattern(null);
-
 				//Is Gradient Fill BL 450 Non-zero indicates a gradient fill is used.
-				bool enabled = this._objectReader.ReadBitLong() != 0;
+				hatch.GradientColor.Enabled = this._objectReader.ReadBitLong() != 0;
 
 				//Reserved BL 451
-				gradient.Reserved = this._objectReader.ReadBitLong();
+				hatch.GradientColor.Reserved = this._objectReader.ReadBitLong();
 				//Gradient Angle BD 460
-				gradient.Angle = this._objectReader.ReadBitDouble();
+				hatch.GradientColor.Angle = this._objectReader.ReadBitDouble();
 				//Gradient Shift BD 461
-				gradient.Shift = this._objectReader.ReadBitDouble();
+				hatch.GradientColor.Shift = this._objectReader.ReadBitDouble();
 				//Single Color Grad.BL 452
-				gradient.IsSingleColorGradient = (uint)this._objectReader.ReadBitLong() > 0U;
+				hatch.GradientColor.IsSingleColorGradient = (uint)this._objectReader.ReadBitLong() > 0U;
 				//Gradient Tint BD 462
-				gradient.ColorTint = this._objectReader.ReadBitDouble();
+				hatch.GradientColor.ColorTint = this._objectReader.ReadBitDouble();
 
 				//# of Gradient Colors BL 453
 				int ncolors = this._objectReader.ReadBitLong();
 				for (int i = 0; i < ncolors; ++i)
 				{
-					//Unknown double BD 463
-					var value = this._objectReader.ReadBitDouble();
-					//RGB Color
-					var color = this._mergedReaders.ReadCmColor();
+					GradientColor color = new GradientColor();
 
-					gradient.Colors.Add(color);
+					//Gradient Value double BD 463
+					color.Value = this._objectReader.ReadBitDouble();
+					//RGB Color
+					color.Color = this._mergedReaders.ReadCmColor();
+
+					hatch.GradientColor.Colors.Add(color);
 				}
 
 				//Gradient Name TV 470
-				gradient.Name = this._textReader.ReadVariableText();
-
-				//Set the pattern if is enabled
-				if (enabled)
-					hatch.Pattern = gradient;
+				hatch.GradientColor.Name = this._textReader.ReadVariableText();
 			}
 
 			//Common:
@@ -4029,7 +3903,7 @@ namespace ACadSharp.IO.DWG
 
 			for (int i = 0; i < npaths; i++)
 			{
-				DwgHatchTemplate.DwgBoundaryPathTemplate pathTemplate = new DwgHatchTemplate.DwgBoundaryPathTemplate();
+				CadHatchTemplate.CadBoundaryPathTemplate pathTemplate = new CadHatchTemplate.CadBoundaryPathTemplate();
 
 				//Pathflag BL 92 Path flag
 				pathTemplate.Path.Flags = (BoundaryPathFlags)this._objectReader.ReadBitLong();
@@ -4044,11 +3918,11 @@ namespace ACadSharp.IO.DWG
 					for (int j = 0; j < nsegments; ++j)
 					{
 						//pathtypestatus RC 72 type of path
-						byte pathTypeStatus = this._objectReader.ReadByte();
+						Hatch.BoundaryPath.EdgeType pathTypeStatus = (Hatch.BoundaryPath.EdgeType)this._objectReader.ReadByte();
 						switch (pathTypeStatus)
 						{
-							case 1:
-								pathTemplate.Path.Edges.Add(new HatchBoundaryPath.Line
+							case Hatch.BoundaryPath.EdgeType.Line:
+								pathTemplate.Path.Edges.Add(new Hatch.BoundaryPath.Line
 								{
 									//pt0 2RD 10 first endpoint
 									Start = this._objectReader.Read2RawDouble(),
@@ -4056,8 +3930,8 @@ namespace ACadSharp.IO.DWG
 									End = this._objectReader.Read2RawDouble()
 								});
 								break;
-							case 2:
-								pathTemplate.Path.Edges.Add(new HatchBoundaryPath.Arc
+							case Hatch.BoundaryPath.EdgeType.CircularArc:
+								pathTemplate.Path.Edges.Add(new Hatch.BoundaryPath.Arc
 								{
 									//pt0 2RD 10 center
 									Center = this._objectReader.Read2RawDouble(),
@@ -4071,15 +3945,15 @@ namespace ACadSharp.IO.DWG
 									CounterClockWise = this._objectReader.ReadBit()
 								});
 								break;
-							case 3:
-								pathTemplate.Path.Edges.Add(new HatchBoundaryPath.Ellipse
+							case Hatch.BoundaryPath.EdgeType.EllipticArc:
+								pathTemplate.Path.Edges.Add(new Hatch.BoundaryPath.Ellipse
 								{
 									//pt0 2RD 10 center
 									Center = this._objectReader.Read2RawDouble(),
 									//endpoint 2RD 11 endpoint of major axis
 									MajorAxisEndPoint = this._objectReader.Read2RawDouble(),
 									//minormajoratio BD 40 ratio of minor to major axis
-									MinorToMajorRatio = this._objectReader.ReadBitDouble(),
+									Radius = this._objectReader.ReadBitDouble(),
 									//startangle BD 50 start angle
 									StartAngle = this._objectReader.ReadBitDouble(),
 									//endangle BD 51 endangle
@@ -4088,8 +3962,9 @@ namespace ACadSharp.IO.DWG
 									CounterClockWise = this._objectReader.ReadBit()
 								});
 								break;
-							case 4:
-								HatchBoundaryPath.Spline splineEdge = new HatchBoundaryPath.Spline();
+							case Hatch.BoundaryPath.EdgeType.Spline:
+								Hatch.BoundaryPath.Spline splineEdge = new Hatch.BoundaryPath.Spline();
+
 								//degree BL 94 degree of the spline
 								splineEdge.Degree = this._objectReader.ReadBitLong();
 								//isrational B 73 1 if rational(has weights), else 0
@@ -4130,13 +4005,13 @@ namespace ACadSharp.IO.DWG
 										for (int fp = 0; fp < nfitPoints; ++fp)
 										{
 											//Fitpoint 2RD 11
-											XY fpoint = this._objectReader.Read2RawDouble();
+											splineEdge.FitPoints.Add(this._objectReader.Read2RawDouble());
 										}
 
 										//Start tangent 2RD 12
-										XY startTangent = this._objectReader.Read2RawDouble();
+										splineEdge.StartTangent = this._objectReader.Read2RawDouble();
 										//End tangent 2RD 13
-										XY endTangent = this._objectReader.Read2RawDouble();
+										splineEdge.EndTangent = this._objectReader.Read2RawDouble();
 									}
 								}
 
@@ -4148,7 +4023,7 @@ namespace ACadSharp.IO.DWG
 				}
 				else    //POLYLINE PATH
 				{
-					HatchBoundaryPath.Polyline pline = new HatchBoundaryPath.Polyline();
+					Hatch.BoundaryPath.Polyline pline = new Hatch.BoundaryPath.Polyline();
 					//bulgespresent B 72 bulges are present if 1
 					bool bulgespresent = this._objectReader.ReadBit();
 					//closed B 73 1 if closed
@@ -4161,13 +4036,12 @@ namespace ACadSharp.IO.DWG
 						//pt0 2RD 10 point on polyline
 						XY vertex = this._objectReader.Read2RawDouble();
 
-						double bulge = 0;
 						if (bulgespresent)
 							//bulge BD 42 bulge
-							bulge = this._objectReader.ReadBitDouble();
+							pline.Bulge = this._objectReader.ReadBitDouble();
 
 						//Add the vertex
-						pline.Vertices.Add(new XYZ(vertex.X, vertex.Y, bulge));
+						pline.Vertices.Add(new XY(vertex.X, vertex.Y));
 					}
 				}
 
@@ -4239,7 +4113,7 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readXRecord()
+		private CadTemplate readXRecord()
 		{
 			XRecrod xRecord = new XRecrod();
 			CadXRecordTemplate template = new CadXRecordTemplate(xRecord);
@@ -4292,7 +4166,7 @@ namespace ACadSharp.IO.DWG
 					case GroupCodeValueType.Int64:
 						xRecord.Entries.Add(new XRecrod.Entry(code, this._objectReader.ReadRawLong()));
 						break;
-					case GroupCodeValueType.StringHex:
+					case GroupCodeValueType.Handle:
 						xRecord.Entries.Add(new XRecrod.Entry(code, this._objectReader.ReadTextUnicode()));
 						break;
 					case GroupCodeValueType.Bool:
@@ -4324,10 +4198,10 @@ namespace ACadSharp.IO.DWG
 			return template;
 		}
 
-		private DwgTemplate readLayout()
+		private CadTemplate readLayout()
 		{
 			Layout layout = new Layout();
-			DwgLayoutTemplate template = new DwgLayoutTemplate(layout);
+			CadLayoutTemplate template = new CadLayoutTemplate(layout);
 
 			this.readCommonNonEntityData(template);
 
@@ -4474,7 +4348,7 @@ namespace ACadSharp.IO.DWG
 
 		#endregion Object readers
 
-		private DwgTemplate readDwgColor()
+		private CadTemplate readDwgColor()
 		{
 			DwgColorTemplate.DwgColor dwgColor = new DwgColorTemplate.DwgColor();
 			DwgColorTemplate template = new DwgColorTemplate(dwgColor);

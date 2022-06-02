@@ -4,26 +4,22 @@ using System.Linq;
 namespace ACadSharp.Attributes
 {
 	[System.AttributeUsage(AttributeTargets.Property, Inherited = true, AllowMultiple = false)]
-	public sealed class DxfCodeValueAttribute : Attribute
+	public sealed class DxfCodeValueAttribute : Attribute, ICodeValueAttribute
 	{
-		/// <summary>
-		/// Dxf codes binding the property
-		/// </summary>
+		/// <inheritdoc/>
 		public DxfCode[] ValueCodes { get; }
 
-		/// <summary>
-		/// The property is not a raw value, indicates a reference to an object
-		/// </summary>
-		public bool IsReference { get; }
+		/// <inheritdoc/>
+		public DxfReferenceType ReferenceType { get; }
 
 		public DxfCodeValueAttribute(params int[] codes)
 		{
 			this.ValueCodes = codes.Select(c => (DxfCode)c).ToArray();
 		}
 
-		public DxfCodeValueAttribute(bool isReference, params int[] codes) : this(codes)
+		public DxfCodeValueAttribute(DxfReferenceType referenceType, params int[] codes) : this(codes)
 		{
-			this.IsReference = isReference;
+			this.ReferenceType = referenceType;
 		}
 	}
 }

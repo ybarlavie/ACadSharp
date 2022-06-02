@@ -4,8 +4,14 @@ namespace ACadSharp.Tables.Collections
 {
 	public class BlockRecordsTable : Table<BlockRecord>
 	{
+		/// <inheritdoc/>
 		public override ObjectType ObjectType => ObjectType.BLOCK_CONTROL_OBJ;
+		
+		/// <inheritdoc/>
+		public override string ObjectName => DxfFileToken.TableBlockRecord;
 
-		public BlockRecordsTable(CadDocument document) : base(document) { }
+		internal BlockRecordsTable() { }
+
+		internal BlockRecordsTable(CadDocument document) : base(document) { }
 	}
 }

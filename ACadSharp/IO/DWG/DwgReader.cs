@@ -88,8 +88,8 @@ namespace ACadSharp.IO.DWG
 		/// <inheritdoc/>
 		public override CadDocument Read()
 		{
-			this._document = new CadDocument();
-			this._builder = new DwgDocumentBuilder(this._document, this.Flags, this.notificationHandler);
+			this._document = new CadDocument(false);
+			this._builder = new DwgDocumentBuilder(this._document, this.Flags, this.OnNotificationHandler);
 
 			//Read the file header
 			this.readFileHeader();
@@ -410,7 +410,7 @@ namespace ACadSharp.IO.DWG
 					else
 					{
 						//0 offset, wrong reference
-						notificationHandler.Invoke(this, new NotificationEventArgs($"Warning: readHandles, negative offset: {offset}"));
+						OnNotificationHandler.Invoke(this, new NotificationEventArgs($"Warning: readHandles, negative offset: {offset}"));
 					}
 				}
 
@@ -496,7 +496,7 @@ namespace ACadSharp.IO.DWG
 				handles,
 				this._document.Classes);
 
-			sectionReader.Read(this.notificationHandler);
+			sectionReader.Read(this.OnNotificationHandler);
 		}
 
 		#region File Header reading methods
@@ -703,7 +703,7 @@ namespace ACadSharp.IO.DWG
 				//0x1C	4	Encrypted(0 = no, 1 = yes, 2 = unknown)
 				descriptor.Encrypted = streamIO.ReadInt<LittleEndianConverter>();
 				//0x20	64	Section Name(string)
-				descriptor.Name = streamIO.ReadString(64, TextEncoding.GetListedEncoding(CodePage.Windows1252)).Replace("\0", "");
+				descriptor.Name = streamIO.ReadString(64, TextEncoding.GetListedEncoding(CodePage.Windows1252)).Split('\0')[0];
 
 				ulong currPosition = 0;
 				//Following this, the following (local) section page map data will be present

@@ -11,16 +11,16 @@ namespace ACadSharp.IO
 {
 	internal abstract class CadDocumentBuilder
 	{
-		// Stores all the templates to build the document, some of the elements can be null due a missing implementation
-		public Dictionary<ulong, DwgTemplate> Templates { get; } = new Dictionary<ulong, DwgTemplate>();
-
-		public Dictionary<ulong, BlockRecord> BlockRecords { get; } = new Dictionary<ulong, BlockRecord>();
-
-		public Dictionary<string, LineType> LineTypes { get; set; } = new Dictionary<string, LineType>(StringComparer.OrdinalIgnoreCase);
+		public NotificationEventHandler NotificationHandler { get; }
 
 		public CadDocument DocumentToBuild { get; }
 
-		public NotificationEventHandler NotificationHandler { get; }
+		public Dictionary<string, LineType> LineTypes { get; } = new Dictionary<string, LineType>(StringComparer.OrdinalIgnoreCase);
+
+		// Stores all the templates to build the document, some of the elements can be null due a missing implementation
+		protected Dictionary<ulong, CadTemplate> templates = new Dictionary<ulong, CadTemplate>();
+
+		protected Dictionary<ulong, CadObject> cadObjects = new Dictionary<ulong, CadObject>();
 
 		public CadDocumentBuilder(CadDocument document, NotificationEventHandler notification = null)
 		{
@@ -30,29 +30,24 @@ namespace ACadSharp.IO
 
 		public virtual void BuildDocument()
 		{
-			foreach (DwgTemplate template in this.Templates.Values)
+			foreach (CadTemplate template in this.templates.Values)
 			{
-				template?.Build(this);
+				template.Build(this);
 			}
+		}
+
+		public void AddTemplate(CadTemplate template)
+		{
+			this.templates[template.CadObject.Handle] = template;
+			this.cadObjects[template.CadObject.Handle] = template.CadObject;
 		}
 
 		public CadObject GetCadObject(ulong handle)
 		{
-			if (this.Templates.TryGetValue(handle, out DwgTemplate template))
+			if (this.templates.TryGetValue(handle, out CadTemplate template))
 				return template?.CadObject;
 			else
 				return null;
-		}
-
-		public T GetCadObject<T>(ulong handle) where T : CadObject
-		{
-			if (this.Templates.TryGetValue(handle, out DwgTemplate template))
-			{
-				if (template?.CadObject is T)
-					return (T)template?.CadObject;
-			}
-
-			return null;
 		}
 
 		public T GetCadObject<T>(ulong? handle) where T : CadObject
@@ -62,7 +57,13 @@ namespace ACadSharp.IO
 				return null;
 			}
 
-			return GetCadObject<T>(handle.Value);
+			if (this.cadObjects.TryGetValue(handle.Value, out CadObject co))
+			{
+				if (co is T)
+					return (T)co;
+			}
+
+			return null;
 		}
 
 		public bool TryGetCadObject<T>(ulong? handle, out T value) where T : CadObject
@@ -73,12 +74,7 @@ namespace ACadSharp.IO
 				return false;
 			}
 
-			return this.TryGetCadObject(handle.Value, out value);
-		}
-
-		public bool TryGetCadObject<T>(ulong handle, out T value) where T : CadObject
-		{
-			if (this.Templates.TryGetValue(handle, out DwgTemplate template))
+			if (this.templates.TryGetValue(handle.Value, out CadTemplate template))
 			{
 				if (template?.CadObject is T)
 				{
@@ -91,9 +87,9 @@ namespace ACadSharp.IO
 			return false;
 		}
 
-		public T GetObjectTemplate<T>(ulong handle) where T : DwgTemplate
+		public T GetObjectTemplate<T>(ulong handle) where T : CadTemplate
 		{
-			if (this.Templates.TryGetValue(handle, out DwgTemplate builder))
+			if (this.templates.TryGetValue(handle, out CadTemplate builder))
 			{
 				return (T)builder;
 			}
@@ -101,9 +97,9 @@ namespace ACadSharp.IO
 			return null;
 		}
 
-		public bool TryGetObjectTemplate<T>(ulong handle, out T value) where T : DwgTemplate
+		public bool TryGetObjectTemplate<T>(ulong handle, out T value) where T : CadTemplate
 		{
-			if (this.Templates.TryGetValue(handle, out DwgTemplate template))
+			if (this.templates.TryGetValue(handle, out CadTemplate template))
 			{
 				if (template is T)
 				{

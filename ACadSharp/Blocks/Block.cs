@@ -17,7 +17,7 @@ namespace ACadSharp.Blocks
 	/// </remarks>
 	[DxfName(DxfFileToken.Block)]
 	[DxfSubClass(DxfSubclassMarker.BlockBegin)]
-	public class Block : Entity
+	public class Block : Entity, INamedCadObject
 	{
 		/// <inheritdoc/>
 		public override ObjectType ObjectType => ObjectType.BLOCK;
@@ -28,7 +28,7 @@ namespace ACadSharp.Blocks
 		/// <summary>
 		/// Specifies the name of the object.
 		/// </summary>
-		[DxfCodeValue(2)]
+		[DxfCodeValue(2, 3)]
 		public string Name
 		{
 			get { return (this.Owner as BlockRecord).Name; }

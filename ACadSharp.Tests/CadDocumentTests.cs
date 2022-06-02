@@ -5,40 +5,65 @@ using System.Text;
 using ACadSharp.Tables.Collections;
 using ACadSharp.Tables;
 using Xunit;
+using ACadSharp.Tests.Common;
+using ACadSharp.Entities;
+using Xunit.Abstractions;
 
 namespace ACadSharp.Tests
 {
 	public class CadDocumentTests
 	{
-		[Fact()]
-		public void CadDocumentTest()
-		{
-			CadDocument document = new CadDocument();
+		protected readonly DocumentIntegrity _docIntegrity;
 
-			this.assertTable(document, document.AppIds);
-			this.assertTable(document, document.BlockRecords);
-			this.assertTable(document, document.DimensionStyles);
-			this.assertTable(document, document.Layers);
-			this.assertTable(document, document.LineTypes);
-			this.assertTable(document, document.TextStyles);
-			this.assertTable(document, document.UCSs);
-			this.assertTable(document, document.Views);
-			this.assertTable(document, document.VPorts);
+		public CadDocumentTests(ITestOutputHelper output)
+		{
+			this._docIntegrity = new DocumentIntegrity(output);
 		}
 
-		private void assertTable<T>(CadDocument doc, Table<T> table)
-			where T : TableEntry
+		[Fact]
+		public void CadDocumentTest()
 		{
-			Assert.NotNull(table);
+			CadDocument doc = new CadDocument();
 
-			Assert.NotNull(table.Document);
-			Assert.Equal(doc, table.Document);
-			Assert.Equal(doc, table.Owner);
+			this._docIntegrity.AssertTableHirearchy(doc);
+		}
 
-			Assert.True(table.Handle != 0);
+		[Fact]
+		public void CadDocumentDefaultTest()
+		{
+			CadDocument doc = new CadDocument();
 
-			CadObject t = doc.GetCadObject(table.Handle);
-			Assert.Equal(t, table);
+			this._docIntegrity.AssertDocumentDefaults(doc);
+			this._docIntegrity.AssertTableHirearchy(doc);
+			this._docIntegrity.AssertBlockRecords(doc);
+		}
+
+		[Fact]
+		public void AddCadObject()
+		{
+			Line line = new Line();
+			CadDocument doc = new CadDocument();
+
+			doc.BlockRecords[BlockRecord.ModelSpaceName].Entities.Add(line);
+
+			CadObject l = doc.GetCadObject(line.Handle);
+
+			//Assert existing element
+			Assert.NotNull(l);
+			Assert.Equal(line, l);
+			Assert.False(0 == l.Handle);
+			Assert.Equal(line.Handle, l.Handle);
+		}
+
+		[Fact]
+		public void NotAllowDuplicate()
+		{
+			Line line = new Line();
+			CadDocument doc = new CadDocument();
+
+			doc.BlockRecords[BlockRecord.ModelSpaceName].Entities.Add(line);
+
+			Assert.Throws<ArgumentException>(() => doc.BlockRecords[BlockRecord.ModelSpaceName].Entities.Add(line));
 		}
 	}
 }

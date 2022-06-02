@@ -8,8 +8,14 @@ namespace ACadSharp.Tables.Collections
 {
 	public class LayersTable : Table<Layer>
 	{
+		/// <inheritdoc/>
 		public override ObjectType ObjectType => ObjectType.LAYER_CONTROL_OBJ;
 
-		public LayersTable(CadDocument document) : base(document) { }
+		/// <inheritdoc/>
+		public override string ObjectName => DxfFileToken.TableLayer;
+
+		internal LayersTable() { }
+
+		internal LayersTable(CadDocument document) : base(document) { }
 	}
 }

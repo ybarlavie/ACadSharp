@@ -1,6 +1,7 @@
 ﻿using ACadSharp.Header;
 using ACadSharp.IO;
 using ACadSharp.IO.DXF;
+using ACadSharp.Tests.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,50 +11,68 @@ using Xunit.Abstractions;
 
 namespace ACadSharp.Tests.IO.DXF
 {
-	public class DxfReaderTests
+	public class DxfReaderTests : CadReaderTestsBase<DxfReader>
 	{
-		private const string _samplesFolder = "../../../../samples/dxf/";
+		public DxfReaderTests(ITestOutputHelper output) : base(output) { }
 
-		public static readonly TheoryData<string> FilePaths;
-
-		private readonly ITestOutputHelper output;
-
-		static DxfReaderTests()
+		[Theory]
+		[MemberData(nameof(DxfAsciiFiles))]
+		public void ReadHeaderAciiTest(string test)
 		{
-			FilePaths = new TheoryData<string>();
-			foreach (string file in Directory.GetFiles(_samplesFolder, "*.dxf"))
-			{
-				FilePaths.Add(file);
-			}
+			base.ReadHeaderTest(test);
 		}
 
-		public DxfReaderTests(ITestOutputHelper output)
+		[Theory]
+		[MemberData(nameof(DxfBinaryFiles))]
+		public void ReadHeaderBinaryTest(string test)
 		{
-			this.output = output;
+			base.ReadHeaderTest(test);
 		}
 
-		[Theory(Skip = "Not implemented")]
-		[MemberData(nameof(FilePaths))]
-		public void ReadTest(string test)
+		[Theory]
+		[MemberData(nameof(DxfAsciiFiles))]
+		public void ReadAsciiTest(string test)
 		{
-			CadDocument doc = DxfReader.Read(test, this.onNotification);
+			base.ReadTest(test);
 		}
 
-		[Theory(Skip = "Not implemented")]
-		[MemberData(nameof(FilePaths))]
-		public void ReadHeaderTest(string test)
+		[Theory]
+		[MemberData(nameof(DxfBinaryFiles))]
+		public void ReadBinaryTest(string test)
 		{
-			CadHeader header;
-
-			using (DxfReader reader = new DxfReader(test, this.onNotification))
-			{
-				header = reader.ReadHeader();
-			}
+			base.ReadTest(test);
 		}
 
-		private void onNotification(object sender, NotificationEventArgs e)
+		[Theory]
+		[MemberData(nameof(DxfAsciiFiles))]
+		[MemberData(nameof(DxfBinaryFiles))]
+		public override void AssertDocumentDefaults(string test)
 		{
-			output.WriteLine(e.Message);
+			base.AssertDocumentDefaults(test);
+		}
+
+		[Theory]
+		[MemberData(nameof(DxfAsciiFiles))]
+		[MemberData(nameof(DxfBinaryFiles))]
+		public override void AssertTableHirearchy(string test)
+		{
+			base.AssertTableHirearchy(test);
+		}
+
+		[Theory]
+		[MemberData(nameof(DxfAsciiFiles))]
+		[MemberData(nameof(DxfBinaryFiles))]
+		public override void AssertBlockRecords(string test)
+		{
+			base.AssertBlockRecords(test);
+		}
+
+		[Theory]
+		[MemberData(nameof(DxfAsciiFiles))]
+		[MemberData(nameof(DxfBinaryFiles))]
+		public override void AssertDocumentTree(string test)
+		{
+			base.AssertDocumentTree(test);
 		}
 	}
 }

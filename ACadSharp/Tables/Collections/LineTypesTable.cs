@@ -4,8 +4,14 @@ namespace ACadSharp.Tables.Collections
 {
 	public class LineTypesTable : Table<LineType>
 	{
+		/// <inheritdoc/>
 		public override ObjectType ObjectType => ObjectType.LTYPE_CONTROL_OBJ;
 
-		public LineTypesTable(CadDocument document) : base(document) { }
+		/// <inheritdoc/>
+		public override string ObjectName => DxfFileToken.TableLinetype;
+
+		internal LineTypesTable( ) : base() { }
+
+		internal LineTypesTable(CadDocument document) : base(document) { }
 	}
 }

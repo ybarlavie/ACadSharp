@@ -1,27 +1,27 @@
-## ACadSharp ![Build](https://img.shields.io/github/workflow/status/DomCr/ACadSharp/Build/master) ![Build&Test](https://github.com/DomCr/ACadSharp/actions/workflows/build_n_test.yml/badge.svg) ![License](https://img.shields.io/github/license/DomCr/ACadSharp)
+## ACadSharp ![Build&Test](https://github.com/DomCr/ACadSharp/actions/workflows/build_n_test.yml/badge.svg) ![License](https://img.shields.io/github/license/DomCr/ACadSharp) ![nuget](https://img.shields.io/nuget/v/Acadsharp)
 
 C# library to read/write cad files like dxf/dwg.
 
-#### Compatible Dwg versions:
+#### Compatible Dwg/Dxf versions:
 
-- [ ] DWG Release 1.1 
-- [ ] DWG Release 1.2
-- [ ] DWG Release 1.4
-- [ ] DWG Release 2.0
-- [ ] DWG Release 2.10
-- [ ] AC1002 - DWG Release 2.5
-- [ ] AC1003 - DWG Release 2.6
-- [ ] AC1004 - DWG Release 9
-- [ ] AC1006 - DWG Release 10
-- [ ] AC1009 - DWG Release 11/12 (LT R1/R2)
-- [x] AC1012 - DWG Release 14, 14.01 (LT97/LT98)
-- [x] AC1014 - DWG Release 14, 14.01 (LT97/LT98)
-- [x] AC1015 - DWG AutoCAD 2000/2000i/2002
-- [x] AC1018 - DWG AutoCAD 2004/2005/2006
-- [x] AC1021 - DWG AutoCAD 2007/2008/2009
-- [x] AC1024 - DWG AutoCAD 2010/2011/2012
-- [x] AC1027 - DWG AutoCAD 2013/2014/2015/2016/2017
-- [x] AC1032 - DWG AutoCAD 2018/2019/2020
+- [ ] Release 1.1 
+- [ ] Release 1.2
+- [ ] Release 1.4
+- [ ] Release 2.0
+- [ ] Release 2.10
+- [ ] AC1002 - Release 2.5
+- [ ] AC1003 - Release 2.6
+- [ ] AC1004 - Release 9
+- [ ] AC1006 - Release 10
+- [ ] AC1009 - Release 11/12 (LT R1/R2)
+- [x] AC1012 - Release 14, 14.01 (LT97/LT98)
+- [x] AC1014 - Release 14, 14.01 (LT97/LT98)
+- [x] AC1015 - AutoCAD 2000/2000i/2002
+- [x] AC1018 - AutoCAD 2004/2005/2006
+- [x] AC1021 - AutoCAD 2007/2008/2009
+- [x] AC1024 - AutoCAD 2010/2011/2012
+- [x] AC1027 - AutoCAD 2013/2014/2015/2016/2017
+- [x] AC1032 - AutoCAD 2018/2019/2020
 
 #### Code Example
 
@@ -42,7 +42,7 @@ private static void onNotification(object sender, NotificationEventArgs e)
 WIP
 ---
 
-The dwg reader is not yet fully implemented, the NotificationHandler will send a message to inform about the objects that could not be readed.
+The dwg/dxf readers are not yet fully implemented, the NotificationHandler will send a message to inform about the objects that could not be readed or any other error in the process.
 
 ##### Dwg entities not implemented
 
@@ -54,10 +54,18 @@ The dwg reader is not yet fully implemented, the NotificationHandler will send a
 - ACAD_PROXY_OBJECT
 - VIEW
 
-##### Dxf
+##### Dxf reader entities not implemented
 
-- DxfReader
-- DxfWriter
+- LWPOLYLINE
+- POLYLINE_PFACE
+- LWPOLYLINE
+- DIMENSION
+- ACAD_TABLE
+- VIEW
+- WIPEOUT
+- LEADER
+- 3DFACE
+- MESH
 
 ##### Long term 
 

@@ -25,17 +25,19 @@ namespace ACadSharp.Tables
 		/// <inheritdoc/>
 		public override string ObjectName => DxfFileToken.TableDimstyle;
 
+		public static DimensionStyle Default { get { return new DimensionStyle("Standard"); } }
+
 		/// <summary>
 		/// DIMPOST
 		/// </summary>
 		[DxfCodeValue(3)]
-		public string PostFix { get; set; }
+		public string PostFix { get; set; } = "<>";
 
 		/// <summary>
 		/// DIMAPOST
 		/// </summary>
 		[DxfCodeValue(4)]
-		public string AlternateDimensioningSuffix { get; set; }
+		public string AlternateDimensioningSuffix { get; set; } = "[]";
 
 		/// <summary>
 		/// DIMTOL
@@ -227,7 +229,18 @@ namespace ACadSharp.Tables
 		/// DIMASZ
 		/// </summary>
 		[DxfCodeValue(41)]
-		public double ArrowSize { get; set; }
+		public double ArrowSize
+		{
+			get { return this._arrowSize; }
+			set
+			{
+				if (value < 0)
+				{
+					throw new ArgumentOutOfRangeException(nameof(value), value, "The ArrowSize must be equals or greater than zero.");
+				}
+				this._arrowSize = value;
+			}
+		}
 
 		/// <summary>
 		/// DIMEXO
@@ -292,7 +305,7 @@ namespace ACadSharp.Tables
 		/// <summary>
 		/// DIMTFILLCLR
 		/// </summary>
-		[DxfCodeValue(70)]
+		//[DxfCodeValue(70)]	//No present in the dxf documentation
 		public Color TextBackgroundColor { get; set; }
 
 		/// <summary>
@@ -414,9 +427,9 @@ namespace ACadSharp.Tables
 		/// </summary>
 		[DxfCodeValue(295)]
 		public TextDirection TextDirection { get; set; }
-		
+
 		public double AltMzf { get; set; }
-		
+
 		public double Mzf { get; set; }
 
 		/// <summary>
@@ -440,7 +453,7 @@ namespace ACadSharp.Tables
 		/// <summary>
 		/// DIMTXSTY
 		/// </summary>
-		[DxfCodeValue(340)]
+		[DxfCodeValue(DxfReferenceType.Handle, 340)]
 		public TextStyle Style { get; set; }
 
 		/// <summary>
@@ -485,6 +498,10 @@ namespace ACadSharp.Tables
 		[DxfCodeValue(344)]
 		public Block DimArrow2 { get; set; }
 
-		public DimensionStyle() : base() { }
+		private double _arrowSize = 0.18;
+
+		public DimensionStyle() : this(null) { }
+
+		public DimensionStyle(string name) : base(name) { }
 	}
 }

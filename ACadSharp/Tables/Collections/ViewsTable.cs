@@ -4,8 +4,14 @@ namespace ACadSharp.Tables.Collections
 {
 	public class ViewsTable : Table<View>
 	{
+		/// <inheritdoc/>
 		public override ObjectType ObjectType => ObjectType.VIEW_CONTROL_OBJ;
 
-		public ViewsTable(CadDocument document) : base(document) { }
+		/// <inheritdoc/>
+		public override string ObjectName => DxfFileToken.TableView;
+
+		internal ViewsTable() : base() { }
+
+		internal ViewsTable(CadDocument document) : base(document) { }
 	}
 }

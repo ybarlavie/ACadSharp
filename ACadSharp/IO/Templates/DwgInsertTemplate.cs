@@ -1,11 +1,12 @@
 ﻿using ACadSharp.Blocks;
 using ACadSharp.Entities;
 using ACadSharp.IO.DWG;
+using ACadSharp.Tables;
 using System.Collections.Generic;
 
 namespace ACadSharp.IO.Templates
 {
-	internal class DwgInsertTemplate : DwgEntityTemplate
+	internal class DwgInsertTemplate : CadEntityTemplate
 	{
 		public bool HasAtts { get; set; }
 
@@ -25,41 +26,34 @@ namespace ACadSharp.IO.Templates
 
 		public DwgInsertTemplate(Insert insert) : base(insert) { }
 
+		public override bool AddName(int dxfcode, string name)
+		{
+			bool value = base.AddName(dxfcode, name);
+			if (value)
+				return value;
+
+			switch (dxfcode)
+			{
+				case 2:
+					this.BlockName = name;
+					value = true;
+					break;
+				default:
+					break;
+			}
+
+			return value;
+		}
+
 		public override void Build(CadDocumentBuilder builder)
 		{
 			base.Build(builder);
 
 			Insert insert = this.CadObject as Insert;
 
-			if (this.BlockHeaderHandle.HasValue)
+			if (builder.TryGetCadObject(this.BlockHeaderHandle, out BlockRecord block))
 			{
-				// orig code
-				// insert.Block = builder.GetCadObject<Block>(this.BlockHeaderHandle.Value);
-
-				// problem: builder.GetCadObject<Block>(this.BlockHeaderHandle.Value) returns null
-				// because, in the case of an Insert object, GetObject fails the type (Block) check.
-				// the templates' CadObject is not of type "Block"
-
-				// proposed solution:
-				// 1) extract the handle	
-				ulong handle = this.BlockHeaderHandle.Value;
-
-				// 2) attempt to use the original GetCadObject
-				Block bl = builder.GetCadObject<Block>(handle);
-
-				if (bl != null) 
-				{
-					// 3) if the original GetCadObject returns a Block, use it
-					insert.Block = bl;
-				} 
-				else 
-				{
-					// 4) if the original GetCadObject returns null, use the BlockEntity
-					// from the BlockRecordTemplate
-					DwgBlockRecordTemplate brt = builder.GetObjectTemplate<DwgBlockRecordTemplate>(handle);
-					insert.Block = brt.CadObject.BlockEntity;
-				}
-				
+				insert.Block = block;
 			}
 
 			if (this.FirstAttributeHandle.HasValue)

@@ -23,13 +23,15 @@ namespace ACadSharp.Entities
 	/// <summary>
 	/// Common base class for <see cref="AttributeEntity" /> and <see cref="AttributeDefinition" />.
 	/// </summary>
+	[DxfSubClass(null, true)]
 	public abstract class AttributeBase : TextEntity
 	{
 		[DxfCodeValue(74)]
-		public override TextVerticalAlignment VerticalAlignment { get; set; } = TextVerticalAlignment.Baseline;
+		public override TextVerticalAlignmentType VerticalAlignment { get; set; } = TextVerticalAlignmentType.Baseline;
 
 		[DxfCodeValue(280)]
 		public byte Version { get; set; }
+
 		/// <summary>
 		/// Specifies the tag string of the object
 		/// </summary>

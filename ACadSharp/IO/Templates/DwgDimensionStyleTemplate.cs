@@ -3,7 +3,7 @@ using ACadSharp.Tables;
 
 namespace ACadSharp.IO.Templates
 {
-	internal class DwgDimensionStyleTemplate : DwgTemplate<DimensionStyle>
+	internal class DwgDimensionStyleTemplate : CadTemplate<DimensionStyle>
 	{
 		public string DIMBL_Name { get; internal set; }
 		public string DIMBLK1_Name { get; internal set; }
@@ -18,6 +18,25 @@ namespace ACadSharp.IO.Templates
 		public ulong Dimltex2 { get; internal set; }
 
 		public DwgDimensionStyleTemplate(DimensionStyle dimStyle) : base(dimStyle) { }
+
+		public override bool AddHandle(int dxfcode, ulong handle)
+		{
+			bool value = base.AddHandle(dxfcode, handle);
+			if (value)
+				return value;
+
+			switch (dxfcode)
+			{
+				case 340:
+					DIMTXSTY = handle;
+					value = true;
+					break;
+				default:
+					break;
+			}
+
+			return value;
+		}
 
 		public override void Build(CadDocumentBuilder builder)
 		{
